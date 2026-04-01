@@ -1,0 +1,597 @@
+import java.util.*;
+import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+// ─────────────────────────────────────────────
+//  DATA MODELS
+// ─────────────────────────────────────────────
+
+class Book {
+    private String id;
+    private String name;
+    private String author;
+    private boolean isAvailable;
+
+    public Book(String id, String name, String author) {
+        this.id = id;
+        this.name = name;
+        this.author = author;
+        this.isAvailable = true;
+    }
+    public String getId()        { return id; }
+    public String getName()      { return name; }
+    public String getAuthor()    { return author; }
+    public boolean isAvailable() { return isAvailable; }
+    public void setAvailable(boolean available) { this.isAvailable = available; }
+}
+
+class Staff {
+    private String id;
+    private String name;
+    private String role; // "ADMIN", "LIBRARIAN", "CLERK"
+    private String password;
+
+    public Staff(String id, String name, String role, String password) {
+        this.id = id;
+        this.name = name;
+        this.role = role;
+        this.password = password;
+    }
+    public String getId()       { return id; }
+    public String getName()     { return name; }
+    public String getRole()     { return role; }
+    public String getPassword() { return password; }
+}
+
+class Member {
+    private String id;
+    private String name;
+    private String contact;
+
+    public Member(String id, String name, String contact) {
+        this.id = id;
+        this.name = name;
+        this.contact = contact;
+    }
+    public String getId()      { return id; }
+    public String getName()    { return name; }
+    public String getContact() { return contact; }
+}
+
+class BookTransaction {
+    private String transactionId;
+    private String bookId;
+    private String bookName;
+    private String memberId;
+    private String memberName;
+    private String staffId;
+    private String staffName;
+    private String issueDate;
+    private String returnDate;
+    private String status; // "ISSUED" or "RETURNED"
+
+    public BookTransaction(String transactionId, String bookId, String bookName,
+                           String memberId, String memberName,
+                           String staffId, String staffName, String issueDate) {
+        this.transactionId = transactionId;
+        this.bookId        = bookId;
+        this.bookName      = bookName;
+        this.memberId      = memberId;
+        this.memberName    = memberName;
+        this.staffId       = staffId;
+        this.staffName     = staffName;
+        this.issueDate     = issueDate;
+        this.returnDate    = "—";
+        this.status        = "ISSUED";
+    }
+
+    // Getters
+    public String getTransactionId() { return transactionId; }
+    public String getBookId()        { return bookId; }
+    public String getBookName()      { return bookName; }
+    public String getMemberId()      { return memberId; }
+    public String getMemberName()    { return memberName; }
+    public String getStaffId()       { return staffId; }
+    public String getStaffName()     { return staffName; }
+    public String getIssueDate()     { return issueDate; }
+    public String getReturnDate()    { return returnDate; }
+    public String getStatus()        { return status; }
+
+    public void markReturned(String returnDate) {
+        this.returnDate = returnDate;
+        this.status     = "RETURNED";
+    }
+}
+
+// ─────────────────────────────────────────────
+//  MAIN APPLICATION
+// ─────────────────────────────────────────────
+
+public class LibraryManagementSystem {
+
+    // ── In-memory stores ──────────────────────
+    static List<Staff>           staffList        = new ArrayList<>();
+    static List<Member>          memberList       = new ArrayList<>();
+    static List<Book>            bookList         = new ArrayList<>();
+    static List<BookTransaction> transactionList  = new ArrayList<>();
+    static Staff                 loggedInStaff    = null;
+
+    static Scanner sc = new Scanner(System.in);
+    static int     txCounter = 1000;
+    static int     staffCounter = 10;
+    static int     memberCounter = 100;
+    static int     bookCounter   = 200;
+
+    static DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm");
+
+    // ── ANSI colour helpers ───────────────────
+    static final String RESET  = "\033[0m";
+    static final String BOLD   = "\033[1m";
+    static final String CYAN   = "\033[36m";
+    static final String GREEN  = "\033[32m";
+    static final String YELLOW = "\033[33m";
+    static final String RED    = "\033[31m";
+    static final String BLUE   = "\033[34m";
+    static final String PURPLE = "\033[35m";
+    static final String WHITE  = "\033[97m";
+
+    // ─────────────────────────────────────────
+    //  BOOTSTRAP DATA
+    // ─────────────────────────────────────────
+    static void seedData(){
+    	printBanner();
+        System.out.println("===== SETUP ADMIN ACCOUNT =====");
+
+        System.out.print("Enter Admin ID: ");
+        String adminId = sc.nextLine();
+
+        System.out.print("Enter Admin Name: ");
+        String adminName = sc.nextLine();
+
+        System.out.print("Set Admin Password: ");
+        String adminPassword = sc.nextLine();
+
+        // Add admin with user input
+        staffList.add(new Staff(adminId, adminName, "ADMIN", adminPassword));
+
+        // Sample books (same as before)
+        bookList.add(new Book("BK-201", "Clean Code", "Robert C. Martin"));
+        bookList.add(new Book("BK-202", "The Pragmatic Programmer","David Thomas"));
+        bookList.add(new Book("BK-203", "Design Patterns", "Gang of Four"));
+        bookList.add(new Book("BK-204", "Effective Java", "Joshua Bloch"));
+        bookList.add(new Book("BK-205", "Introduction to Algorithms","CLRS"));
+    }
+
+    // ─────────────────────────────────────────
+    //  UI HELPERS
+    // ─────────────────────────────────────────
+    static void clearScreen() {
+        // Works on most terminals; graceful no-op otherwise
+        System.out.print("\033[H\033[2J");
+        System.out.flush();
+    }
+
+    static void printBanner() {
+        System.out.println(CYAN + BOLD);
+        System.out.println("  ╔══════════════════════════════════════════════════════════╗");
+        System.out.println("  ║          📚 LIBRARY MANAGEMENT SYSTEM.📚                 ║");
+        System.out.println("  ║              Powered by Java Console                     ║");
+        System.out.println("  ╚══════════════════════════════════════════════════════════╝");
+        System.out.println(RESET);
+    }
+
+    static void printDivider(char ch) {
+        System.out.println(CYAN + "  " + String.valueOf(ch).repeat(60) + RESET);
+    }
+
+    static void printSectionTitle(String title) {
+        System.out.println();
+        System.out.println(YELLOW + BOLD + "  ▌ " + title + RESET);
+        printDivider('─');
+    }
+
+    static void printSuccess(String msg) {
+        System.out.println(GREEN + BOLD + "  ✔  " + msg + RESET);
+    }
+
+    static void printError(String msg) {
+        System.out.println(RED + BOLD + "  ✘  " + msg + RESET);
+    }
+
+    static void printInfo(String msg) {
+        System.out.println(BLUE + "  ℹ  " + msg + RESET);
+    }
+
+    static String nowStr() {
+        return LocalDateTime.now().format(dtf);
+    }
+
+    static String prompt(String label) {
+        System.out.print(WHITE + "  ➤ " + label + ": " + RESET);
+        return sc.nextLine().trim();
+    }
+
+    static void pause() {
+        System.out.print(PURPLE + "\n  Press ENTER to continue..." + RESET);
+        sc.nextLine();
+    }
+
+    // ─────────────────────────────────────────
+    //  LOGIN SCREEN
+    // ─────────────────────────────────────────
+    static boolean loginScreen() {
+        clearScreen();
+        printSectionTitle("Staff Login");
+
+        String id  = prompt("Staff ID");
+        String pwd = prompt("Password");
+
+        for (Staff s : staffList) {
+            if (s.getId().equalsIgnoreCase(id) && s.getPassword().equals(pwd)) {
+                loggedInStaff = s;
+                printSuccess("Welcome back, " + s.getName() + "  [" + s.getRole() + "]");
+                pause();
+                return true;
+            }
+        }
+        printError("Invalid credentials. Please try again.");
+        pause();
+        return false;
+    }
+
+    // ─────────────────────────────────────────
+    //  MAIN MENU  (3 options)
+    // ─────────────────────────────────────────
+    static void mainMenu() {
+        while (true) {
+            clearScreen();
+            printSectionTitle("MAIN MENU");
+            System.out.println(WHITE + "  Logged in as: " + YELLOW + loggedInStaff.getName()
+                    + " [" + loggedInStaff.getRole() + "]" + RESET);
+            System.out.println();
+            System.out.println(CYAN + "  [1]" + WHITE + "  ⚙  Administrative Functions" + RESET);
+            System.out.println(CYAN + "  [2]" + WHITE + "  👥 View Members & Logs" + RESET);
+            System.out.println(CYAN + "  [3]" + WHITE + "  🚪 Exit" + RESET);
+            System.out.println();
+
+            String choice = prompt("Select option");
+
+            switch (choice) {
+                case "1" -> adminMenu();
+                case "2" -> viewMembersAndLogs();
+                case "3" -> {
+                    clearScreen();
+                    System.out.println(CYAN + BOLD);
+                    System.out.println("  ╔══════════════════════════════════════════╗");
+                    System.out.println("  ║   Thank you for using LMS. Goodbye! 📚   ║");
+                    System.out.println("  ╚══════════════════════════════════════════╝");
+                    System.out.println(RESET);
+                    System.exit(0);
+                }
+                default  -> { printError("Invalid option."); pause(); }
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────
+    //  1. ADMINISTRATIVE MENU
+    // ─────────────────────────────────────────
+    static void adminMenu() {
+        while (true) {
+            clearScreen();
+            printSectionTitle("ADMINISTRATIVE FUNCTIONS");
+            System.out.println(CYAN + "  [1]" + WHITE + "  ➕ Add Clerk" + RESET);
+            System.out.println(CYAN + "  [2]" + WHITE + "  ➕ Add Librarian" + RESET);
+            System.out.println(CYAN + "  [3]" + WHITE + "  📋 View Issued Books History" + RESET);
+            System.out.println(CYAN + "  [4]" + WHITE + "  📚 View All Books" + RESET);
+            System.out.println(CYAN + "  [5]" + WHITE + "  🔄 Issue / Return Book" + RESET);
+            System.out.println(CYAN + "  [6]" + WHITE + "  🔓 Logout" + RESET);
+            System.out.println();
+
+            String choice = prompt("Select option");
+            switch (choice) {
+                case "1" -> addStaff("CLERK");
+                case "2" -> addStaff("LIBRARIAN");
+                case "3" -> viewIssuedHistory();
+                case "4" -> viewAllBooks();
+                case "5" -> issueReturnBook();
+                case "6" -> {
+                    loggedInStaff = null;
+                    printInfo("Logged out successfully.");
+                    pause();
+                    // Back to login loop
+                    while (true) {
+                        if (loginScreen()) break;
+                    }
+                    return; // return to mainMenu loop
+                }
+                default -> { printError("Invalid option."); pause(); }
+            }
+        }
+    }
+
+    // ── 1a. Add Staff ─────────────────────────
+    static void addStaff(String role) {
+        clearScreen();
+        printSectionTitle("ADD " + role);
+
+        String id   = "ST-" + (++staffCounter);
+        String name = prompt("Full Name");
+        String pwd  = prompt("Set Password");
+
+        if (name.isEmpty() || pwd.isEmpty()) {
+            printError("Name and password cannot be empty.");
+            pause();
+            return;
+        }
+
+        staffList.add(new Staff(id, name, role, pwd));
+        printSuccess(role + " added successfully!");
+        printInfo("Assigned ID: " + id);
+        pause();
+    }
+
+    // ── 1b. View Issued History ───────────────
+    static void viewIssuedHistory() {
+        clearScreen();
+        printSectionTitle("ISSUED BOOKS HISTORY");
+
+        List<BookTransaction> issued = transactionList.stream()
+                .filter(t -> t.getStatus().equals("ISSUED"))
+                .toList();
+
+        if (issued.isEmpty()) {
+            printInfo("No books are currently issued.");
+        } else {
+            printTableHeader(new String[]{"Txn ID","Book","Member","Staff","Issued On"}, new int[]{10,22,16,16,20});
+            for (BookTransaction t : issued) {
+                printTableRow(new String[]{
+                    t.getTransactionId(), t.getBookName(), t.getMemberName(),
+                    t.getStaffName(), t.getIssueDate()
+                }, new int[]{10,22,16,16,20});
+            }
+            printDivider('─');
+        }
+        pause();
+    }
+
+    // ── 1c. View All Books ────────────────────
+    static void viewAllBooks() {
+        clearScreen();
+        printSectionTitle("ALL BOOKS IN LIBRARY");
+
+        printTableHeader(new String[]{"Book ID","Title","Author","Status"}, new int[]{8,30,22,10});
+        for (Book b : bookList) {
+            String status = b.isAvailable()
+                    ? GREEN + "Available" + RESET
+                    : RED    + "Issued"    + RESET;
+            printTableRowColoured(new String[]{b.getId(), b.getName(), b.getAuthor(), status}, new int[]{8,30,22,10});
+        }
+        printDivider('─');
+        pause();
+    }
+
+    // ── 1d. Issue / Return Book ───────────────
+    static void issueReturnBook() {
+        clearScreen();
+        printSectionTitle("ISSUE / RETURN BOOK");
+
+        System.out.println(CYAN + "  [1]" + WHITE + " Issue a Book" + RESET);
+        System.out.println(CYAN + "  [2]" + WHITE + " Return a Book" + RESET);
+        System.out.println();
+        String choice = prompt("Select action");
+
+        if (choice.equals("1")) issueBook();
+        else if (choice.equals("2")) returnBook();
+        else { printError("Invalid option."); pause(); }
+    }
+
+    static void issueBook() {
+        clearScreen();
+        printSectionTitle("ISSUE BOOK");
+
+        // Member details
+        String memberName = prompt("Member Name");
+        String memberContact = prompt("Member Contact / ID");
+
+        if (memberName.isEmpty()) { printError("Member name required."); pause(); return; }
+
+        // Find or create member
+        Member member = null;
+        for (Member m : memberList) {
+            if (m.getName().equalsIgnoreCase(memberName)) { member = m; break; }
+        }
+        if (member == null) {
+            String mid = "MB-" + (++memberCounter);
+            member = new Member(mid, memberName, memberContact);
+            memberList.add(member);
+            printInfo("New member registered: " + mid);
+        } else {
+            printInfo("Existing member found: " + member.getId());
+        }
+
+        // Book selection
+        System.out.println();
+        printInfo("Available Books:");
+        printTableHeader(new String[]{"Book ID","Title","Author"}, new int[]{8,30,22});
+        for (Book b : bookList) {
+            if (b.isAvailable()) {
+                printTableRow(new String[]{b.getId(), b.getName(), b.getAuthor()}, new int[]{8,30,22});
+            }
+        }
+        printDivider('─');
+
+        String bookId   = prompt("Enter Book ID to issue");
+        String bookName = prompt("Book Name (confirm)");
+
+        Book selected = null;
+        for (Book b : bookList) {
+            if (b.getId().equalsIgnoreCase(bookId)) { selected = b; break; }
+        }
+
+        if (selected == null) { printError("Book ID not found."); pause(); return; }
+        if (!selected.isAvailable()) { printError("Book is already issued."); pause(); return; }
+
+        selected.setAvailable(false);
+        String txId = "TX-" + (++txCounter);
+        BookTransaction tx = new BookTransaction(
+                txId, selected.getId(), selected.getName(),
+                member.getId(), member.getName(),
+                loggedInStaff.getId(), loggedInStaff.getName(),
+                nowStr()
+        );
+        transactionList.add(tx);
+
+        printSuccess("Book issued successfully!");
+        printInfo("Transaction ID : " + txId);
+        printInfo("Book           : " + selected.getName());
+        printInfo("Member         : " + member.getName() + " [" + member.getId() + "]");
+        printInfo("Issued by      : " + loggedInStaff.getName());
+        printInfo("Date & Time    : " + nowStr());
+        pause();
+    }
+
+    static void returnBook() {
+        clearScreen();
+        printSectionTitle("RETURN BOOK");
+
+        String txId = prompt("Enter Transaction ID");
+
+        BookTransaction tx = null;
+        for (BookTransaction t : transactionList) {
+            if (t.getTransactionId().equalsIgnoreCase(txId)) { tx = t; break; }
+        }
+
+        if (tx == null) { printError("Transaction not found."); pause(); return; }
+        if (tx.getStatus().equals("RETURNED")) { printError("Book already returned."); pause(); return; }
+
+        // Mark book available
+        for (Book b : bookList) {
+            if (b.getId().equals(tx.getBookId())) { b.setAvailable(true); break; }
+        }
+
+        tx.markReturned(nowStr());
+        printSuccess("Book returned successfully!");
+        printInfo("Book     : " + tx.getBookName());
+        printInfo("Member   : " + tx.getMemberName());
+        printInfo("Returned : " + tx.getReturnDate());
+        pause();
+    }
+
+    // ─────────────────────────────────────────
+    //  2. VIEW MEMBERS & LOGS
+    // ─────────────────────────────────────────
+    static void viewMembersAndLogs() {
+        clearScreen();
+        printSectionTitle("MEMBERS & ACTIVITY LOG");
+
+        // ── Staff Section ──────────────────────
+        System.out.println(YELLOW + BOLD + "\n  👤 STAFF DIRECTORY" + RESET);
+        printDivider('·');
+        if (staffList.isEmpty()) {
+            printInfo("No staff registered.");
+        } else {
+            printTableHeader(new String[]{"Staff ID","Name","Role"}, new int[]{10,22,14});
+            for (Staff s : staffList) {
+                printTableRow(new String[]{s.getId(), s.getName(), s.getRole()}, new int[]{10,22,14});
+            }
+            printDivider('─');
+        }
+
+        // ── Members Section ────────────────────
+        System.out.println(YELLOW + BOLD + "\n  👥 REGISTERED MEMBERS" + RESET);
+        printDivider('·');
+        if (memberList.isEmpty()) {
+            printInfo("No members registered yet.");
+        } else {
+            printTableHeader(new String[]{"Member ID","Name","Contact"}, new int[]{10,22,20});
+            for (Member m : memberList) {
+                printTableRow(new String[]{m.getId(), m.getName(), m.getContact()}, new int[]{10,22,20});
+            }
+            printDivider('─');
+        }
+
+        // ── Full Transaction Log ───────────────
+        System.out.println(YELLOW + BOLD + "\n  📋 FULL TRANSACTION LOG" + RESET);
+        printDivider('·');
+        if (transactionList.isEmpty()) {
+            printInfo("No transactions recorded.");
+        } else {
+            printTableHeader(
+                new String[]{"Txn ID","Book","Member","Staff","Issued","Returned","Status"},
+                new int[]{8,20,14,14,18,18,10}
+            );
+            for (BookTransaction t : transactionList) {
+                String statusColoured = t.getStatus().equals("ISSUED")
+                        ? YELLOW + "ISSUED"   + RESET
+                        : GREEN  + "RETURNED" + RESET;
+                printTableRowColoured(
+                    new String[]{
+                        t.getTransactionId(), t.getBookName(),
+                        t.getMemberName(),    t.getStaffName(),
+                        t.getIssueDate(),     t.getReturnDate(),
+                        statusColoured
+                    },
+                    new int[]{8,20,14,14,18,18,10}
+                );
+            }
+            printDivider('─');
+        }
+        pause();
+    }
+
+    // ─────────────────────────────────────────
+    //  TABLE RENDERING HELPERS
+    // ─────────────────────────────────────────
+    static void printTableHeader(String[] headers, int[] widths) {
+        StringBuilder row = new StringBuilder(BOLD + BLUE + "  ");
+        for (int i = 0; i < headers.length; i++) {
+            row.append(padRight(headers[i], widths[i]));
+        }
+        System.out.println(row + RESET);
+        printDivider('─');
+    }
+
+    static void printTableRow(String[] cols, int[] widths) {
+        StringBuilder row = new StringBuilder(WHITE + "  ");
+        for (int i = 0; i < cols.length; i++) {
+            row.append(padRight(cols[i], widths[i]));
+        }
+        System.out.println(row + RESET);
+    }
+
+    // Variant that doesn't strip ANSI from colour strings
+    static void printTableRowColoured(String[] cols, int[] widths) {
+        StringBuilder row = new StringBuilder("  ");
+        for (int i = 0; i < cols.length; i++) {
+            String cell = cols[i];
+            // Visible length for padding (strip ANSI)
+            int visibleLen = cell.replaceAll("\033\\[[;\\d]*m", "").length();
+            row.append(cell);
+            int pad = widths[i] - visibleLen;
+            if (pad > 0) row.append(" ".repeat(pad));
+        }
+        System.out.println(row);
+    }
+
+    static String padRight(String s, int width) {
+        if (s == null) s = "";
+        if (s.length() >= width) return s.substring(0, width);
+        return s + " ".repeat(width - s.length());
+    }
+
+    // ─────────────────────────────────────────
+    //  ENTRY POINT
+    // ─────────────────────────────────────────
+    public static void main(String[] args) {
+        seedData();
+        clearScreen();
+        // Login loop
+        while (loggedInStaff == null) {
+            if (loginScreen()) break;
+        }
+
+        mainMenu();
+    }
+}
